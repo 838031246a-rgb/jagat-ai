@@ -25,36 +25,27 @@ jobs:
           set -euo pipefail
           rm -rf site
           mkdir -p site/assets
-          curl -fsSL "$SOURCE/" -o site/index.html
-          python3 - <<'PY'
-          import re
-          import urllib.request
-          from pathlib import Path
-
-          source = "https://second-world-studio.prettyreed8.chatgpt.site"
-          root = Path("site")
-          html = (root / "index.html").read_text()
-          assets = sorted(set(re.findall(r'(?:src|href)="(/assets/[^"]+)"', html)))
-          assets += ["/home-before.png", "/home-after.png", "/favicon.svg"]
-          for remote in sorted(set(assets)):
-              target = root / remote.lstrip("/")
-              target.parent.mkdir(parents=True, exist_ok=True)
-              urllib.request.urlretrieve(source + remote, target)
-
-          for path in root.rglob("*"):
-              if not path.is_file():
-                  continue
-              try:
-                  text = path.read_text()
-              except UnicodeDecodeError:
-                  continue
-              text = text.replace('"/assets/', '"./assets/')
-              text = text.replace("'\/assets/", "'./assets/")
-              text = text.replace('"/home-', '"./home-')
-              text = text.replace('href="/favicon.svg"', 'href="./favicon.svg"')
-              text = text.replace('src="/favicon.svg"', 'src="./favicon.svg"')
-              path.write_text(text)
-          PY
+          UA="Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
+          curl --retry 4 --retry-all-errors -fsSL -A "$UA" "$SOURCE/" -o site/index.html
+          grep -oE '/assets/[A-Za-z0-9_.-]+' site/index.html | sort -u | while IFS= read -r remote; do
+            mkdir -p "site$(dirname "$remote")"
+            curl --retry 4 --retry-all-errors -fsSL -A "$UA" "$SOURCE$remote" -o "site$remote"
+          done
+          for remote in /home-before.png /home-after.png /favicon.svg; do
+            curl --retry 4 --retry-all-errors -fsSL -A "$UA" "$SOURCE$remote" -o "site$remote"
+          done
+          while IFS= read -r -d '' file; do
+            if file --mime-type "$file" | grep -q 'charset=binary'; then
+              continue
+            fi
+            sed -i \
+              -e 's#"/assets/#"./assets/#g' \
+              -e "s#'/assets/#'./assets/#g" \
+              -e 's#\\/assets/#./assets/#g' \
+              -e 's#"/home-#"./home-#g' \
+              -e 's#href="/favicon.svg"#href="./favicon.svg"#g' \
+              -e 's#src="/favicon.svg"#src="./favicon.svg"#g' "$file"
+          done < <(find site -type f -print0)
 
       - name: 配置 GitHub Pages
         uses: actions/configure-pages@v5
