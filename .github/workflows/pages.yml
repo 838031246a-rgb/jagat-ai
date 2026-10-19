@@ -1,0 +1,69 @@
+name: 发布第二世界网页
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 下载已验证网页
+        env:
+          SOURCE: https://second-world-studio.prettyreed8.chatgpt.site
+        run: |
+          set -euo pipefail
+          rm -rf site
+          mkdir -p site/assets
+          curl -fsSL "$SOURCE/" -o site/index.html
+          python3 - <<'PY'
+          import re
+          import urllib.request
+          from pathlib import Path
+
+          source = "https://second-world-studio.prettyreed8.chatgpt.site"
+          root = Path("site")
+          html = (root / "index.html").read_text()
+          assets = sorted(set(re.findall(r'(?:src|href)="(/assets/[^"]+)"', html)))
+          assets += ["/home-before.png", "/home-after.png", "/favicon.svg"]
+          for remote in sorted(set(assets)):
+              target = root / remote.lstrip("/")
+              target.parent.mkdir(parents=True, exist_ok=True)
+              urllib.request.urlretrieve(source + remote, target)
+
+          for path in root.rglob("*"):
+              if not path.is_file():
+                  continue
+              try:
+                  text = path.read_text()
+              except UnicodeDecodeError:
+                  continue
+              text = text.replace('"/assets/', '"./assets/')
+              text = text.replace("'\/assets/", "'./assets/")
+              text = text.replace('"/home-', '"./home-')
+              text = text.replace('href="/favicon.svg"', 'href="./favicon.svg"')
+              text = text.replace('src="/favicon.svg"', 'src="./favicon.svg"')
+              path.write_text(text)
+          PY
+
+      - name: 配置 GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: 上传网页文件
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./site
+
+      - name: 发布到 GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
