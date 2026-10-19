@@ -6,12 +6,10 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
-  group: pages
+  group: static-site
   cancel-in-progress: true
 
 jobs:
@@ -47,14 +45,10 @@ jobs:
               -e 's#src="/favicon.svg"#src="./favicon.svg"#g' "$file"
           done < <(find site -type f -print0)
 
-      - name: 配置 GitHub Pages
-        uses: actions/configure-pages@v5
-
-      - name: 上传网页文件
-        uses: actions/upload-pages-artifact@v3
+      - name: 发布到公开静态分支
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          path: ./site
-
-      - name: 发布到 GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: ./site
+          force_orphan: true
